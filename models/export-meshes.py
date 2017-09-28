@@ -12,15 +12,37 @@ import sys
 import bpy
 import struct
 
-bpy.ops.wm.open_mainfile(filepath='island.blend')
+PATHS = {
+	'in': 'robot.blend',
+	'meshOut': '../dist/robotMeshes.blob',
+	'sceneOut': '../dist/robotScene.blob',
+}
+
+bpy.ops.wm.open_mainfile(filepath=PATHS['in'])
 
 #names of objects whose meshes to write (not actually the names of the meshes):
 to_write = [
-	'House',
-	'Land',
-	'Tree',
-	'Water',
-	'Rock',
+	'Base',
+	'Stand',
+	'Link1',
+	'Link2',
+	'Link3',
+	'Crate',
+	'Crate.001',
+	'Crate.002',
+	'Crate.003',
+	'Crate.004',
+	'Crate.005',
+	'Cube.001', # floor
+]
+
+mesh_only = [
+	'Balloon1',
+	'Balloon1-Pop',
+	'Balloon2',
+	'Balloon2-Pop',
+	'Balloon3',
+	'Balloon3-Pop',
 ]
 
 #data contains vertex and normal data from the meshes:
@@ -33,9 +55,9 @@ strings = b''
 index = b''
 
 vertex_count = 0
-for name in to_write:
+for name in to_write + mesh_only:
 	print("Writing '" + name + "'...")
-	bpy.ops.object.mode_set(mode='OBJECT') #get out of edit mode (just in case)
+	#bpy.ops.object.mode_set(mode='OBJECT') #get out of edit mode (just in case)
 	assert(name in bpy.data.objects)
 	obj = bpy.data.objects[name]
 
@@ -68,24 +90,33 @@ for name in to_write:
 	index += struct.pack('I', vertex_count)
 	index += struct.pack('I', len(mesh.polygons) * 3)
 
+	colors = bpy.data.objects[name].data.vertex_colors.active.data
+
 	#write the mesh:
 	for poly in mesh.polygons:
 		assert(len(poly.loop_indices) == 3)
 		for i in range(0,3):
 			assert(mesh.loops[poly.loop_indices[i]].vertex_index == poly.vertices[i])
 			loop = mesh.loops[poly.loop_indices[i]]
+			color = colors[poly.loop_indices[i]].color
 			vertex = mesh.vertices[loop.vertex_index]
 			for x in mesh.vertices[loop.vertex_index].co:
 				data += struct.pack('f', x)
 			for x in loop.normal:
 				data += struct.pack('f', x)
+			data += struct.pack('BBBB',
+				int(color.r * 255),
+				int(color.g * 255),
+				int(color.b * 255),
+				255
+			)
 	vertex_count += len(mesh.polygons) * 3
 
 #check that we wrote as much data as anticipated:
-assert(vertex_count * (3 * 4 + 3 * 4) == len(data))
+assert(vertex_count * (3 * 4 + 3 * 4 + 4) == len(data))
 
 #write the data chunk and index chunk to an output blob:
-blob = open('../dist/meshes.blob', 'wb')
+blob = open(PATHS['meshOut'], 'wb')
 #first chunk: the data
 blob.write(struct.pack('4s',b'v3n3')) #type
 blob.write(struct.pack('I', len(data))) #length
@@ -99,13 +130,13 @@ blob.write(struct.pack('4s',b'idx0')) #type
 blob.write(struct.pack('I', len(index))) #length
 blob.write(index)
 
-print("Wrote " + str(blob.tell()) + " bytes to meshes.blob")
+print("Wrote " + str(blob.tell()) + " bytes to " + PATHS['meshOut'])
 
 #---------------------------------------------------------------------
 #Export scene (object positions for every object on layer one)
 
 #(re-open file because we adjusted mesh users in the export above)
-bpy.ops.wm.open_mainfile(filepath='island.blend')
+bpy.ops.wm.open_mainfile(filepath=PATHS['in'])
 
 #strings chunk will have names
 strings = b''
@@ -127,13 +158,20 @@ for obj in bpy.data.objects:
 		continue
 	scene += struct.pack('I', name_begin[obj.data.name])
 	scene += struct.pack('I', name_end[obj.data.name])
-	transform = obj.matrix_world.decompose()
+	if obj.parent:
+		scene += struct.pack('I', name_begin[obj.parent.data.name])
+		scene += struct.pack('I', name_end[obj.parent.data.name])
+	else:
+		scene += struct.pack('I', 0)
+		scene += struct.pack('I', 0)
+
+	transform = obj.matrix_local.decompose()
 	scene += struct.pack('3f', transform[0].x, transform[0].y, transform[0].z)
 	scene += struct.pack('4f', transform[1].x, transform[1].y, transform[1].z, transform[1].w)
 	scene += struct.pack('3f', transform[2].x, transform[2].y, transform[2].z)
 
 #write the strings chunk and scene chunk to an output blob:
-blob = open('../dist/scene.blob', 'wb')
+blob = open(PATHS['sceneOut'], 'wb')
 #first chunk: the strings
 blob.write(struct.pack('4s',b'str0')) #type
 blob.write(struct.pack('I', len(strings))) #length
@@ -143,5 +181,5 @@ blob.write(struct.pack('4s',b'scn0')) #type
 blob.write(struct.pack('I', len(scene))) #length
 blob.write(scene)
 
-print("Wrote " + str(blob.tell()) + " bytes to scene.blob")
+print("Wrote " + str(blob.tell()) + " bytes to " + PATHS['sceneOut'])
 

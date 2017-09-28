@@ -8,63 +8,75 @@
 #include <iostream>
 #include <vector>
 
-void Meshes::load(std::string const &filename, Attributes const &attributes) {
+void Meshes::load(std::string const& filename, Attributes const& attributes) {
 	std::ifstream file(filename, std::ios::binary);
 
 	GLuint vao = 0;
 	GLuint total = 0;
-	{ //read + upload data chunk:
-		struct v3n3 {
+	{	// read + upload data chunk:
+		struct v3n3c4 {
 			glm::vec3 v;
 			glm::vec3 n;
+			char c[4];
 		};
-		static_assert(sizeof(v3n3) == 24, "v3n3 is packed");
-		std::vector< v3n3 > data;
+		static_assert(sizeof(v3n3c4) == 3 * 4 + 3 * 4 + 4, "v3n3c4 is packed");
+		std::vector<v3n3c4> data;
 		read_chunk(file, "v3n3", &data);
 
-		//upload data:
+		// upload data:
 		GLuint buffer = 0;
 		glGenBuffers(1, &buffer);
 		glBindBuffer(GL_ARRAY_BUFFER, buffer);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(v3n3) * data.size(), &data[0], GL_STATIC_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(v3n3c4) * data.size(), &data[0], GL_STATIC_DRAW);
 
-		total = data.size(); //store total for later checks on index
+		total = data.size();	// store total for later checks on index
 
-		//store binding:
+		// store binding:
 		glGenVertexArrays(1, &vao);
 		glBindVertexArray(vao);
 		if (attributes.Position != -1U) {
-			glVertexAttribPointer(attributes.Position, 3, GL_FLOAT, GL_FALSE, sizeof(v3n3), (GLbyte *)0);
+			glVertexAttribPointer(attributes.Position, 3, GL_FLOAT, GL_FALSE, sizeof(v3n3c4), (GLbyte*)0);
 			glEnableVertexAttribArray(attributes.Position);
 		} else {
-			std::cerr << "WARNING: loading v3n3 data from '" << filename << "', but not using the Position attribute." << std::endl;
+			std::cerr << "WARNING: loading v3n3c4 data from '" << filename << "', but not using the Position attribute."
+								<< std::endl;
 		}
 		if (attributes.Normal != -1U) {
-			glVertexAttribPointer(attributes.Normal, 3, GL_FLOAT, GL_FALSE, sizeof(v3n3), (GLbyte *)0 + sizeof(glm::vec3));
+			glVertexAttribPointer(attributes.Normal, 3, GL_FLOAT, GL_FALSE, sizeof(v3n3c4), (GLbyte*)0 + sizeof(glm::vec3));
 			glEnableVertexAttribArray(attributes.Normal);
 		} else {
-			std::cerr << "WARNING: loading v3n3 data from '" << filename << "', but not using the Normal attribute." << std::endl;
+			std::cerr << "WARNING: loading v3n3c4 data from '" << filename << "', but not using the Normal attribute."
+								<< std::endl;
+		}
+		if (attributes.Color != -1U) {
+			glVertexAttribPointer(attributes.Color, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(v3n3c4),
+														(GLbyte*)0 + 2 * sizeof(glm::vec3));
+			glEnableVertexAttribArray(attributes.Color);
+		} else {
+			std::cerr << "WARNING: loading v3n3c4 data from '" << filename << "', but not using the Color attribute."
+								<< std::endl;
 		}
 	}
 
-	std::vector< char > strings;
+	std::vector<char> strings;
 	read_chunk(file, "str0", &strings);
 
-	{ //read index chunk, add to meshes:
+	{	// read index chunk, add to meshes:
 		struct IndexEntry {
 			uint32_t name_begin, name_end;
 			uint32_t vertex_start, vertex_count;
 		};
 		static_assert(sizeof(IndexEntry) == 16, "Index entry should be packed");
 
-		std::vector< IndexEntry > index;
+		std::vector<IndexEntry> index;
 		read_chunk(file, "idx0", &index);
 
-		for (auto const &entry : index) {
+		for (auto const& entry : index) {
 			if (!(entry.name_begin <= entry.name_end && entry.name_end <= strings.size())) {
 				throw std::runtime_error("index entry has out-of-range name begin/end");
 			}
-			if (!(entry.vertex_start < entry.vertex_start + entry.vertex_count && entry.vertex_start + entry.vertex_count <= total)) {
+			if (!(entry.vertex_start < entry.vertex_start + entry.vertex_count &&
+						entry.vertex_start + entry.vertex_count <= total)) {
 				throw std::runtime_error("index entry has out-of-range vertex start/count");
 			}
 			std::string name(&strings[0] + entry.name_begin, &strings[0] + entry.name_end);
@@ -74,7 +86,8 @@ void Meshes::load(std::string const &filename, Attributes const &attributes) {
 			mesh.count = entry.vertex_count;
 			bool inserted = meshes.insert(std::make_pair(name, mesh)).second;
 			if (!inserted) {
-				std::cerr << "WARNING: mesh name '" + name + "' in filename '" + filename + "' collides with existing mesh." << std::endl;
+				std::cerr << "WARNING: mesh name '" + name + "' in filename '" + filename + "' collides with existing mesh."
+									<< std::endl;
 			}
 		}
 	}
@@ -84,7 +97,7 @@ void Meshes::load(std::string const &filename, Attributes const &attributes) {
 	}
 }
 
-Mesh const &Meshes::get(std::string const &name) const {
+Mesh const& Meshes::get(std::string const& name) const {
 	auto f = meshes.find(name);
 	if (f == meshes.end()) {
 		throw std::runtime_error("Looking up mesh that doesn't exist.");

@@ -1,28 +1,22 @@
-NOTE: please fill in the first section with information about your game.
+# Pop 'em
 
-# *Game Title*
+Pop 'em is Jared Moore's implementation of [*Robot Fun Police*](http://graphics.cs.cmu.edu/courses/15-466-f17/game2-designs/jmccann/) for game2 in 15-466-f17.
 
-*Game Title* is *Your Name*'s implementation of [*Design Document*](http://graphics.cs.cmu.edu/courses/15-466-f17/game2-designs/put-real-link-here) for game2 in 15-466-f17.
-
-*Include a Screenshot Here*
-
-## Build Notes
-
-*Include any special notes or steps required to build your game here. If there are no special notes, delete this section.*
+![alt text](https://github.com/moorejs/15-466-f17-base2/blob/master/screenshots/main.png?raw=true)
 
 ## Asset Pipeline
 
-*Briefly describe the asset pipeline for this game. What sorts of source files are used? How are they processed? How are they loaded?*
+The whole asset pipeline is about gathering data from the blender scene (.blend file). For each mesh in the scene, we need the mesh data. The script provided with us collected some of this, but I had to get color data as well. This is all output into one binary file. The scene data is captured as well, which was provided for us. But I added more data to keep track of the hierarchy (track what are the parents). The meshes, when loaded, map their name in blender to the mesh data. The scene, when loaded, adds a bunch of objects with their respective transforms/meshes to a list.
 
 ## Architecture
 
-*Provide a brief introduction to how you implemented the design. Talk about the basic structure of your code.*
+My code has a mapping to all the scene objects by their name. This is good enough because there is only one of each name and there are only a few. Additionally, we need to manipulate the Links and Base parts of the robot arm individually. The balloons are also scene objects, but are kept in a vector because this is simple amd I will never need to specifically refer to one.
 
 ## Reflection
 
-*Reflect on the assignment. What was difficult? What worked well? If you were doing it again, what would you change?*
+This was my first real exposure to 3D game programming. I learned a lot and it gives me a lot of confidence for my future. It was difficult at first to understand all of the 3D math involved, but the base code was very helpful. Furthermore, glm is a great and convenient library. Adding the BRDF code was something I should have added too, because implementing cool shaders one of the essentials in my mind.
 
-*Reflect on the design document. What was clear and what was ambiguous? How did you resolve the ambiguities?*
+The design document was pretty clear and simple. I had to come up with how/where balloons should spawn, but that was simple. I would add continually spawning balloons if I were to take this further and make them bob and such.
 
 
 # About Base2

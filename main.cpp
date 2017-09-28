@@ -9,27 +9,30 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
 #include <fstream>
+#include <map>
+#include <utility>
 
-static GLuint compile_shader(GLenum type, std::string const &source);
+static GLuint compile_shader(GLenum type, std::string const& source);
 static GLuint link_program(GLuint vertex_shader, GLuint fragment_shader);
 
-int main(int argc, char **argv) {
-	//Configuration:
+int main(int argc, char** argv) {
+	// Configuration:
 	struct {
-		std::string title = "Game2: Scene";
+		std::string title = "Pop 'em";
 		glm::uvec2 size = glm::uvec2(640, 480);
 	} config;
 
 	//------------  initialization ------------
 
-	//Initialize SDL library:
+	// Initialize SDL library:
 	SDL_Init(SDL_INIT_VIDEO);
 
-	//Ask for an OpenGL context version 3.3, core profile, enable debug:
+	// Ask for an OpenGL context version 3.3, core profile, enable debug:
 	SDL_GL_ResetAttributes();
 	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
@@ -43,20 +46,18 @@ int main(int argc, char **argv) {
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
 
-	//create window:
-	SDL_Window *window = SDL_CreateWindow(
-		config.title.c_str(),
-		SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-		config.size.x, config.size.y,
-		SDL_WINDOW_OPENGL /*| SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI*/
-	);
+	// create window:
+	SDL_Window* window =
+			SDL_CreateWindow(config.title.c_str(), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, config.size.x,
+											 config.size.y, SDL_WINDOW_OPENGL /*| SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI*/
+											 );
 
 	if (!window) {
 		std::cerr << "Error creating SDL window: " << SDL_GetError() << std::endl;
 		return 1;
 	}
 
-	//Create OpenGL context:
+	// Create OpenGL context:
 	SDL_GLContext context = SDL_GL_CreateContext(window);
 
 	if (!context) {
@@ -65,15 +66,15 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	#ifdef _WIN32
-	//On windows, load OpenGL extensions:
+#ifdef _WIN32
+	// On windows, load OpenGL extensions:
 	if (!init_gl_shims()) {
 		std::cerr << "ERROR: failed to initialize shims." << std::endl;
 		return 1;
 	}
-	#endif
+#endif
 
-	//Set VSYNC + Late Swap (prevents crazy FPS):
+	// Set VSYNC + Late Swap (prevents crazy FPS):
 	if (SDL_GL_SetSwapInterval(-1) != 0) {
 		std::cerr << "NOTE: couldn't set vsync + late swap tearing (" << SDL_GetError() << ")." << std::endl;
 		if (SDL_GL_SetSwapInterval(1) != 0) {
@@ -81,87 +82,102 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	//Hide mouse cursor (note: showing can be useful for debugging):
-	//SDL_ShowCursor(SDL_DISABLE);
+	// Hide mouse cursor (note: showing can be useful for debugging):
+	// SDL_ShowCursor(SDL_DISABLE);
 
 	//------------ opengl objects / game assets ------------
 
-	//shader program:
+	// shader program:
 	GLuint program = 0;
 	GLuint program_Position = 0;
 	GLuint program_Normal = 0;
+	GLuint program_Color = 0;
 	GLuint program_mvp = 0;
 	GLuint program_itmv = 0;
 	GLuint program_to_light = 0;
-	{ //compile shader program:
+	{	// compile shader program:
 		GLuint vertex_shader = compile_shader(GL_VERTEX_SHADER,
-			"#version 330\n"
-			"uniform mat4 mvp;\n"
-			"uniform mat3 itmv;\n"
-			"in vec4 Position;\n"
-			"in vec3 Normal;\n"
-			"out vec3 normal;\n"
-			"void main() {\n"
-			"	gl_Position = mvp * Position;\n"
-			"	normal = itmv * Normal;\n"
-			"}\n"
-		);
+																					"#version 330\n"
+																					"uniform mat4 mvp;\n"
+																					"uniform mat3 itmv;\n"
+																					"in vec4 Position;\n"
+																					"in vec3 Normal;\n"
+																					"in vec4 Color;\n"
+																					"out vec3 normal;\n"
+																					"out vec4 color;\n"
+																					"void main() {\n"
+																					"	gl_Position = mvp * Position;\n"
+																					"	normal = itmv * Normal;\n"
+																					" color = Color;\n"
+																					"}\n");
 
 		GLuint fragment_shader = compile_shader(GL_FRAGMENT_SHADER,
-			"#version 330\n"
-			"uniform vec3 to_light;\n"
-			"in vec3 normal;\n"
-			"out vec4 fragColor;\n"
-			"void main() {\n"
-			"	float light = max(0.0, dot(normalize(normal), to_light));\n"
-			"	fragColor = vec4(light * vec3(1.0, 1.0, 1.0), 1.0);\n"
-			"}\n"
-		);
+																						"#version 330\n"
+																						"uniform vec3 to_light;\n"
+																						"in vec3 normal;\n"
+																						"in vec4 color;\n"
+																						"out vec4 fragColor;\n"
+																						"void main() {\n"
+																						"	float light = max(0.0, dot(normalize(normal), to_light));\n"
+																						"	fragColor = vec4(light * vec3(color), 1.0);\n"
+																						"}\n");
 
 		program = link_program(fragment_shader, vertex_shader);
 
-		//look up attribute locations:
+		// look up attribute locations:
 		program_Position = glGetAttribLocation(program, "Position");
-		if (program_Position == -1U) throw std::runtime_error("no attribute named Position");
+		if (program_Position == -1U)
+			throw std::runtime_error("no attribute named Position");
 		program_Normal = glGetAttribLocation(program, "Normal");
-		if (program_Normal == -1U) throw std::runtime_error("no attribute named Normal");
+		if (program_Normal == -1U)
+			throw std::runtime_error("no attribute named Normal");
+		program_Color = glGetAttribLocation(program, "Color");
+		if (program_Color == -1U)
+			throw std::runtime_error("no attribute named Color");
 
-		//look up uniform locations:
+		// look up uniform locations:
 		program_mvp = glGetUniformLocation(program, "mvp");
-		if (program_mvp == -1U) throw std::runtime_error("no uniform named mvp");
+		if (program_mvp == -1U)
+			throw std::runtime_error("no uniform named mvp");
 		program_itmv = glGetUniformLocation(program, "itmv");
-		if (program_itmv == -1U) throw std::runtime_error("no uniform named itmv");
+		if (program_itmv == -1U)
+			throw std::runtime_error("no uniform named itmv");
 
 		program_to_light = glGetUniformLocation(program, "to_light");
-		if (program_to_light == -1U) throw std::runtime_error("no uniform named to_light");
+		if (program_to_light == -1U)
+			throw std::runtime_error("no uniform named to_light");
 	}
 
 	//------------ meshes ------------
 
 	Meshes meshes;
 
-	{ //add meshes to database:
+	{	// add meshes to database:
 		Meshes::Attributes attributes;
 		attributes.Position = program_Position;
 		attributes.Normal = program_Normal;
+		attributes.Color = program_Color;
 
-		meshes.load("meshes.blob", attributes);
+		meshes.load("robotMeshes.blob", attributes);
 	}
-	
+
 	//------------ scene ------------
 
+	Scene menuScene;
 	Scene scene;
-	//set up camera parameters based on window:
+	// set up camera parameters based on window:
 	scene.camera.fovy = glm::radians(60.0f);
 	scene.camera.aspect = float(config.size.x) / float(config.size.y);
 	scene.camera.near = 0.01f;
 	//(transform will be handled in the update function below)
 
-	//add some objects from the mesh library:
-	auto add_object = [&](std::string const &name, glm::vec3 const &position, glm::quat const &rotation, glm::vec3 const &scale) -> Scene::Object & {
-		Mesh const &mesh = meshes.get(name);
+	// add some objects from the mesh library:
+	auto add_object = [&](std::string const& name, glm::vec3 const& position, glm::quat const& rotation,
+												glm::vec3 const& scale) -> Scene::Object& {
+		Mesh const& mesh = meshes.get(name);
 		scene.objects.emplace_back();
-		Scene::Object &object = scene.objects.back();
+		Scene::Object& object = scene.objects.back();
+		object.list_pos = --scene.objects.end();
 		object.transform.position = position;
 		object.transform.rotation = rotation;
 		object.transform.scale = scale;
@@ -174,57 +190,100 @@ int main(int argc, char **argv) {
 		return object;
 	};
 
+	std::map<std::string, Scene::Object*> objs;
+	std::vector<std::pair<std::string, std::string>> parents;
+	{	// read objects to add from "scene.blob":
+		std::ifstream file("robotScene.blob", std::ios::binary);
 
-	{ //read objects to add from "scene.blob":
-		std::ifstream file("scene.blob", std::ios::binary);
-
-		std::vector< char > strings;
-		//read strings chunk:
+		std::vector<char> strings;
+		// read strings chunk:
 		read_chunk(file, "str0", &strings);
 
-		{ //read scene chunk, add meshes to scene:
+		{	// read scene chunk, add meshes to scene:
 			struct SceneEntry {
 				uint32_t name_begin, name_end;
+				uint32_t parent_name_begin, parent_name_end;
 				glm::vec3 position;
 				glm::quat rotation;
 				glm::vec3 scale;
 			};
-			static_assert(sizeof(SceneEntry) == 48, "Scene entry should be packed");
+			static_assert(sizeof(SceneEntry) == 4 * 14, "Scene entry should be packed");
 
-			std::vector< SceneEntry > data;
+			std::vector<SceneEntry> data;
 			read_chunk(file, "scn0", &data);
 
-			for (auto const &entry : data) {
+			for (auto const& entry : data) {
 				if (!(entry.name_begin <= entry.name_end && entry.name_end <= strings.size())) {
 					throw std::runtime_error("index entry has out-of-range name begin/end");
 				}
 				std::string name(&strings[0] + entry.name_begin, &strings[0] + entry.name_end);
-				add_object(name, entry.position, entry.rotation, entry.scale);
+				objs[name] = &add_object(name, entry.position, entry.rotation, entry.scale);
+				if (entry.parent_name_begin != entry.parent_name_end) {
+					parents.emplace_back(name,
+															 std::string(&strings[0] + entry.parent_name_begin, &strings[0] + entry.parent_name_end));
+				}
+			}
+
+			for (const auto& parent : parents) {
+				objs[parent.first]->transform.set_parent(&objs[parent.second]->transform);
 			}
 		}
 	}
 
-	//create a weird waving tree stack:
-	std::vector< Scene::Object * > tree_stack;
-	tree_stack.emplace_back( &add_object("Tree", glm::vec3(1.0f, 0.0f, 0.2f), glm::quat(0.0f, 0.0f, 0.0f, 1.0f), glm::vec3(0.3f)) );
-	tree_stack.emplace_back( &add_object("Tree", glm::vec3(0.0f, 0.0f, 1.7f), glm::quat(0.0f, 0.0f, 0.0f, 1.0f), glm::vec3(0.9f)) );
-	tree_stack.emplace_back( &add_object("Tree", glm::vec3(0.0f, 0.0f, 1.7f), glm::quat(0.0f, 0.0f, 0.0f, 1.0f), glm::vec3(0.9f)) );
-	tree_stack.emplace_back( &add_object("Tree", glm::vec3(0.0f, 0.0f, 1.7f), glm::quat(0.0f, 0.0f, 0.0f, 1.0f), glm::vec3(0.9f)) );
-
-	for (uint32_t i = 1; i < tree_stack.size(); ++i) {
-		tree_stack[i]->transform.set_parent(&tree_stack[i-1]->transform);
-	}
-
-	std::vector< float > wave_acc(tree_stack.size(), 0.0f);
-
-	glm::vec2 mouse = glm::vec2(0.0f, 0.0f); //mouse position in [-1,1]x[-1,1] coordinates
+	glm::vec2 mouse = glm::vec2(0.0f, 0.0f);	// mouse position in [-1,1]x[-1,1] coordinates
 
 	struct {
-		float radius = 5.0f;
+		float radius = 10.0f;
 		float elevation = 0.0f;
 		float azimuth = 0.0f;
 		glm::vec3 target = glm::vec3(0.0f, 0.0f, 0.0f);
 	} camera;
+
+	auto changeRotation = [&objs](const std::string& name, float* const currentAngle, const float delta,
+																const float lower, const float upper, const glm::vec3& axis) {
+		if (lower <= *currentAngle + delta && *currentAngle + delta <= upper) {
+			*currentAngle += delta;
+			objs[name]->transform.rotation = glm::angleAxis(*currentAngle, axis);
+		}
+	};
+
+	struct Balloon {
+		std::string meshname;
+		Scene::Object* obj;
+		bool popped = false;
+
+		Balloon(const std::string& meshname, Scene::Object* obj) : meshname(meshname), obj(obj){};
+	};
+	static std::vector<Balloon> balloons;
+
+	const uint8_t* keys = SDL_GetKeyboardState(nullptr);
+
+	float baseAngle = 0.0f;
+	float link1angle = 0.0f;
+	float link2angle = 0.0f;
+	float link3angle = 0.0f;
+
+	const float MOVE_SPEED = 2.0f;
+	const glm::vec3 BASE_AXIS = glm::vec3(0.0f, 0.0f, 1.0f);
+	const glm::vec3 LINK_AXIS = glm::vec3(-1.0f, 0.0f, 0.0f);
+
+	balloons.emplace_back(
+			"Balloon1",
+			&add_object("Balloon1", glm::vec3(1.0f, 1.0f, 3.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::vec3(0.5f)));
+
+	balloons.emplace_back(
+			"Balloon2",
+			&add_object("Balloon2", glm::vec3(-2.45f, -1.0f, 2.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::vec3(0.5f)));
+
+	balloons.emplace_back(
+			"Balloon3",
+			&add_object("Balloon3", glm::vec3(1.0f, -2.0f, 1.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::vec3(0.5f)));
+
+	// reset all
+	changeRotation("Base", &baseAngle, 0, -1.0f, 1.0f, BASE_AXIS);
+	changeRotation("Link1", &link1angle, 0, -1.0f, 1.0f, LINK_AXIS);
+	changeRotation("Link2", &link2angle, 0, -1.0f, 1.0f, LINK_AXIS);
+	changeRotation("Link3", &link3angle, 0, -1.0f, 1.0f, LINK_AXIS);
 
 	//------------ game loop ------------
 
@@ -232,77 +291,116 @@ int main(int argc, char **argv) {
 	while (true) {
 		static SDL_Event evt;
 		while (SDL_PollEvent(&evt) == 1) {
-			//handle input:
+			// handle input:
 			if (evt.type == SDL_MOUSEMOTION) {
 				glm::vec2 old_mouse = mouse;
 				mouse.x = (evt.motion.x + 0.5f) / float(config.size.x) * 2.0f - 1.0f;
-				mouse.y = (evt.motion.y + 0.5f) / float(config.size.y) *-2.0f + 1.0f;
+				mouse.y = (evt.motion.y + 0.5f) / float(config.size.y) * -2.0f + 1.0f;
 				if (evt.motion.state & SDL_BUTTON(SDL_BUTTON_LEFT)) {
 					camera.elevation += -2.0f * (mouse.y - old_mouse.y);
 					camera.azimuth += -2.0f * (mouse.x - old_mouse.x);
 				}
 			} else if (evt.type == SDL_MOUSEBUTTONDOWN) {
-			} else if (evt.type == SDL_KEYDOWN && evt.key.keysym.sym == SDLK_ESCAPE) {
-				should_quit = true;
+			} else if (evt.type == SDL_KEYDOWN) {
+				if (evt.key.keysym.sym == SDLK_ESCAPE) {
+					should_quit = true;
+				}
 			} else if (evt.type == SDL_QUIT) {
 				should_quit = true;
 				break;
 			}
 		}
-		if (should_quit) break;
+		if (should_quit)
+			break;
 
 		auto current_time = std::chrono::high_resolution_clock::now();
 		static auto previous_time = current_time;
-		float elapsed = std::chrono::duration< float >(current_time - previous_time).count();
+		float elapsed = std::chrono::duration<float>(current_time - previous_time).count();
 		previous_time = current_time;
 
-		{ //update game state:
-			//tree stack:
-			for (uint32_t i = 0; i < tree_stack.size(); ++i) {
-				wave_acc[i] += elapsed * (0.3f + 0.3f * i);
-				wave_acc[i] -= std::floor(wave_acc[i]);
-				float ang = (0.7f * float(M_PI)) * i;
-				tree_stack[i]->transform.rotation = glm::angleAxis(
-					std::cos(wave_acc[i] * 2.0f * float(M_PI)) * (0.2f + 0.1f * i),
-					glm::vec3(std::cos(ang), std::sin(ang), 0.0f)
-				);
+		{	// update game state:
+			// https://en.wikipedia.org/wiki/Erase%E2%80%93remove_idiom
+
+			glm::vec3 pinPosition = objs["Link3"]->transform.make_local_to_world() * glm::vec4(0.0f, 0.0f, 0.35f, 1.0f);
+			for (Balloon& balloon : balloons) {
+				if (balloon.popped) {
+					balloon.obj->transform.position = glm::vec3(1000.0f, 1000.0f, 1000.0f);
+				} else if (!balloon.popped && glm::distance(pinPosition, balloon.obj->transform.position) < 0.6f) {
+					balloon.meshname += "-Pop";
+					const Mesh& mesh = meshes.get(balloon.meshname);
+					balloon.obj->vao = mesh.vao;
+					balloon.obj->start = mesh.start;
+					balloon.obj->count = mesh.count;
+					balloon.popped = true;
+				}
 			}
 
-			//camera:
-			scene.camera.transform.position = camera.radius * glm::vec3(
-				std::cos(camera.elevation) * std::cos(camera.azimuth),
-				std::cos(camera.elevation) * std::sin(camera.azimuth),
-				std::sin(camera.elevation)) + camera.target;
+			if (keys[SDL_SCANCODE_Z]) {
+				changeRotation("Base", &baseAngle, -MOVE_SPEED * elapsed, glm::radians(-10000.0f), glm::radians(10000.0f),
+											 BASE_AXIS);
+			}
+			if (keys[SDL_SCANCODE_X]) {
+				changeRotation("Base", &baseAngle, MOVE_SPEED * elapsed, glm::radians(-10000.0f), glm::radians(10000.0f),
+											 BASE_AXIS);
+			}
+
+			if (keys[SDL_SCANCODE_A]) {
+				changeRotation("Link1", &link1angle, -MOVE_SPEED * elapsed, glm::radians(-30.0f), glm::radians(30.0f),
+											 LINK_AXIS);
+			}
+			if (keys[SDL_SCANCODE_S]) {
+				changeRotation("Link1", &link1angle, MOVE_SPEED * elapsed, glm::radians(-30.0f), glm::radians(30.0f),
+											 LINK_AXIS);
+			}
+
+			if (keys[SDL_SCANCODE_SEMICOLON]) {
+				changeRotation("Link2", &link2angle, -MOVE_SPEED * elapsed, glm::radians(-130.0f), glm::radians(130.0f),
+											 LINK_AXIS);
+			}
+			if (keys[SDL_SCANCODE_APOSTROPHE]) {
+				changeRotation("Link2", &link2angle, MOVE_SPEED * elapsed, glm::radians(-130.0f), glm::radians(130.0f),
+											 LINK_AXIS);
+			}
+
+			if (keys[SDL_SCANCODE_PERIOD]) {
+				changeRotation("Link3", &link3angle, -MOVE_SPEED * elapsed, glm::radians(-130.0f), glm::radians(130.0f),
+											 LINK_AXIS);
+			}
+			if (keys[SDL_SCANCODE_SLASH]) {
+				changeRotation("Link3", &link3angle, MOVE_SPEED * elapsed, glm::radians(-130.0f), glm::radians(130.0f),
+											 LINK_AXIS);
+			}
+
+			// camera:
+			scene.camera.transform.position =
+					camera.radius * glm::vec3(std::cos(camera.elevation) * std::cos(camera.azimuth),
+																		std::cos(camera.elevation) * std::sin(camera.azimuth), std::sin(camera.elevation)) +
+					camera.target;
 
 			glm::vec3 out = -glm::normalize(camera.target - scene.camera.transform.position);
 			glm::vec3 up = glm::vec3(0.0f, 0.0f, 1.0f);
 			up = glm::normalize(up - glm::dot(up, out) * out);
 			glm::vec3 right = glm::cross(up, out);
-			
-			scene.camera.transform.rotation = glm::quat_cast(
-				glm::mat3(right, up, out)
-			);
+
+			scene.camera.transform.rotation = glm::quat_cast(glm::mat3(right, up, out));
 			scene.camera.transform.scale = glm::vec3(1.0f, 1.0f, 1.0f);
 		}
 
-		//draw output:
+		// draw output:
 		glClearColor(0.5, 0.5, 0.5, 0.0);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glEnable(GL_DEPTH_TEST);
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-
-		{ //draw game state:
+		{	// draw game state:
 			glUseProgram(program);
 			glUniform3fv(program_to_light, 1, glm::value_ptr(glm::normalize(glm::vec3(0.0f, 1.0f, 10.0f))));
 			scene.render();
 		}
 
-
 		SDL_GL_SwapWindow(window);
 	}
-
 
 	//------------  teardown ------------
 
@@ -315,11 +413,9 @@ int main(int argc, char **argv) {
 	return 0;
 }
 
-
-
-static GLuint compile_shader(GLenum type, std::string const &source) {
+static GLuint compile_shader(GLenum type, std::string const& source) {
 	GLuint shader = glCreateShader(type);
-	GLchar const *str = source.c_str();
+	GLchar const* str = source.c_str();
 	GLint length = source.size();
 	glShaderSource(shader, 1, &str, &length);
 	glCompileShader(shader);
@@ -329,7 +425,7 @@ static GLuint compile_shader(GLenum type, std::string const &source) {
 		std::cerr << "Failed to compile shader." << std::endl;
 		GLint info_log_length = 0;
 		glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &info_log_length);
-		std::vector< GLchar > info_log(info_log_length, 0);
+		std::vector<GLchar> info_log(info_log_length, 0);
 		GLsizei length = 0;
 		glGetShaderInfoLog(shader, info_log.size(), &length, &info_log[0]);
 		std::cerr << "Info log: " << std::string(info_log.begin(), info_log.begin() + length);
@@ -350,7 +446,7 @@ static GLuint link_program(GLuint fragment_shader, GLuint vertex_shader) {
 		std::cerr << "Failed to link shader program." << std::endl;
 		GLint info_log_length = 0;
 		glGetProgramiv(program, GL_INFO_LOG_LENGTH, &info_log_length);
-		std::vector< GLchar > info_log(info_log_length, 0);
+		std::vector<GLchar> info_log(info_log_length, 0);
 		GLsizei length = 0;
 		glGetProgramInfoLog(program, info_log.size(), &length, &info_log[0]);
 		std::cerr << "Info log: " << std::string(info_log.begin(), info_log.begin() + length);

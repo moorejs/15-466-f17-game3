@@ -3,7 +3,7 @@
 #include "GL.hpp"
 #include <map>
 
-//Mesh is a lightweight handle to some OpenGL vertex data:
+// Mesh is a lightweight handle to some OpenGL vertex data:
 struct Mesh {
 	GLuint vao = 0;
 	GLuint start = 0;
@@ -17,15 +17,16 @@ struct Meshes {
 	struct Attributes {
 		GLuint Position = -1U;
 		GLuint Normal = -1U;
+		GLuint Color = -1U;
 	};
-	//add meshes from a file; use the indicated indices for attribute locations:
+	// add meshes from a file; use the indicated indices for attribute locations:
 	// note: will throw if file fails to read.
-	void load(std::string const &filename, Attributes const &attributes);
+	void load(std::string const& filename, Attributes const& attributes);
 
-	//look up a particular mesh in the DB:
+	// look up a particular mesh in the DB:
 	// note: will throw if mesh not found.
-	Mesh const &get(std::string const &name) const;
+	Mesh const& get(std::string const& name) const;
 
-	//internals:
-	std::map< std::string, Mesh > meshes;
+	// internals:
+	std::map<std::string, Mesh> meshes;
 };
