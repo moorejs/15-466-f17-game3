@@ -16,7 +16,7 @@ My code has a mapping to all the scene objects by their name. This is good enoug
 
 This was my first real exposure to 3D game programming. I learned a lot and it gives me a lot of confidence for my future. It was difficult at first to understand all of the 3D math involved, but the base code was very helpful. Furthermore, glm is a great and convenient library. Adding the BRDF code was something I should have added too, because implementing cool shaders one of the essentials in my mind.
 
-The design document was pretty clear and simple. I had to come up with how/where balloons should spawn, but that was simple. I would add continually spawning balloons if I were to take this further and make them bob and such.
+The design document was pretty clear and simple. I had to come up with how/where balloons should spawn, but that was simple. I would add continually spawning balloons if I were to take this further and make them float up to a ceiling and such.
 
 
 # About Base2

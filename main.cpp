@@ -9,7 +9,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include <algorithm>
+#include <cmath>
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -250,9 +250,11 @@ int main(int argc, char** argv) {
 	struct Balloon {
 		std::string meshname;
 		Scene::Object* obj;
+		glm::vec3 basePos;
 		bool popped = false;
 
-		Balloon(const std::string& meshname, Scene::Object* obj) : meshname(meshname), obj(obj){};
+		Balloon(const std::string& meshname, Scene::Object* obj)
+				: meshname(meshname), obj(obj), basePos(obj->transform.position){};
 	};
 	static std::vector<Balloon> balloons;
 
@@ -318,20 +320,25 @@ int main(int argc, char** argv) {
 		float elapsed = std::chrono::duration<float>(current_time - previous_time).count();
 		previous_time = current_time;
 
+		static float total = 0;
+		total += elapsed;
 		{	// update game state:
-			// https://en.wikipedia.org/wiki/Erase%E2%80%93remove_idiom
 
 			glm::vec3 pinPosition = objs["Link3"]->transform.make_local_to_world() * glm::vec4(0.0f, 0.0f, 0.35f, 1.0f);
 			for (Balloon& balloon : balloons) {
 				if (balloon.popped) {
 					balloon.obj->transform.position = glm::vec3(1000.0f, 1000.0f, 1000.0f);
-				} else if (!balloon.popped && glm::distance(pinPosition, balloon.obj->transform.position) < 0.6f) {
-					balloon.meshname += "-Pop";
-					const Mesh& mesh = meshes.get(balloon.meshname);
-					balloon.obj->vao = mesh.vao;
-					balloon.obj->start = mesh.start;
-					balloon.obj->count = mesh.count;
-					balloon.popped = true;
+				} else if (!balloon.popped) {
+					balloon.obj->transform.position.z = balloon.basePos.z + std::sin(total / 2.0f) / 2.0f;
+
+					if (glm::distance(pinPosition, balloon.obj->transform.position) < 0.6f) {
+						balloon.meshname += "-Pop";
+						const Mesh& mesh = meshes.get(balloon.meshname);
+						balloon.obj->vao = mesh.vao;
+						balloon.obj->start = mesh.start;
+						balloon.obj->count = mesh.count;
+						balloon.popped = true;
+					}
 				}
 			}
 
