@@ -23,7 +23,7 @@ static GLuint link_program(GLuint vertex_shader, GLuint fragment_shader);
 int main(int argc, char** argv) {
 	// Configuration:
 	struct {
-		std::string title = "Pop 'em";
+		std::string title = "Game 3";
 		glm::uvec2 size = glm::uvec2(640, 480);
 	} config;
 
@@ -158,7 +158,7 @@ int main(int argc, char** argv) {
 		attributes.Normal = program_Normal;
 		attributes.Color = program_Color;
 
-		meshes.load("robotMeshes.blob", attributes);
+		meshes.load("meshes.blob", attributes);
 	}
 
 	//------------ scene ------------
@@ -193,7 +193,7 @@ int main(int argc, char** argv) {
 	std::map<std::string, Scene::Object*> objs;
 	std::vector<std::pair<std::string, std::string>> parents;
 	{	// read objects to add from "scene.blob":
-		std::ifstream file("robotScene.blob", std::ios::binary);
+		std::ifstream file("scene.blob", std::ios::binary);
 
 		std::vector<char> strings;
 		// read strings chunk:
@@ -239,53 +239,7 @@ int main(int argc, char** argv) {
 		glm::vec3 target = glm::vec3(0.0f, 0.0f, 0.0f);
 	} camera;
 
-	auto changeRotation = [&objs](const std::string& name, float* const currentAngle, const float delta,
-																const float lower, const float upper, const glm::vec3& axis) {
-		if (lower <= *currentAngle + delta && *currentAngle + delta <= upper) {
-			*currentAngle += delta;
-			objs[name]->transform.rotation = glm::angleAxis(*currentAngle, axis);
-		}
-	};
-
-	struct Balloon {
-		std::string meshname;
-		Scene::Object* obj;
-		glm::vec3 basePos;
-		bool popped = false;
-
-		Balloon(const std::string& meshname, Scene::Object* obj)
-				: meshname(meshname), obj(obj), basePos(obj->transform.position){};
-	};
-	static std::vector<Balloon> balloons;
-
 	const uint8_t* keys = SDL_GetKeyboardState(nullptr);
-
-	float baseAngle = 0.0f;
-	float link1angle = 0.0f;
-	float link2angle = 0.0f;
-	float link3angle = 0.0f;
-
-	const float MOVE_SPEED = 2.0f;
-	const glm::vec3 BASE_AXIS = glm::vec3(0.0f, 0.0f, 1.0f);
-	const glm::vec3 LINK_AXIS = glm::vec3(-1.0f, 0.0f, 0.0f);
-
-	balloons.emplace_back(
-			"Balloon1",
-			&add_object("Balloon1", glm::vec3(1.0f, 1.0f, 3.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::vec3(0.5f)));
-
-	balloons.emplace_back(
-			"Balloon2",
-			&add_object("Balloon2", glm::vec3(-2.45f, -1.0f, 2.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::vec3(0.5f)));
-
-	balloons.emplace_back(
-			"Balloon3",
-			&add_object("Balloon3", glm::vec3(1.0f, -2.0f, 1.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::vec3(0.5f)));
-
-	// reset all
-	changeRotation("Base", &baseAngle, 0, -1.0f, 1.0f, BASE_AXIS);
-	changeRotation("Link1", &link1angle, 0, -1.0f, 1.0f, LINK_AXIS);
-	changeRotation("Link2", &link2angle, 0, -1.0f, 1.0f, LINK_AXIS);
-	changeRotation("Link3", &link3angle, 0, -1.0f, 1.0f, LINK_AXIS);
 
 	//------------ game loop ------------
 
@@ -323,59 +277,7 @@ int main(int argc, char** argv) {
 		static float total = 0;
 		total += elapsed;
 		{	// update game state:
-
-			glm::vec3 pinPosition = objs["Link3"]->transform.make_local_to_world() * glm::vec4(0.0f, 0.0f, 0.35f, 1.0f);
-			for (Balloon& balloon : balloons) {
-				if (balloon.popped) {
-					balloon.obj->transform.position = glm::vec3(1000.0f, 1000.0f, 1000.0f);
-				} else if (!balloon.popped) {
-					balloon.obj->transform.position.z = balloon.basePos.z + std::sin(total / 2.0f) / 2.0f;
-
-					if (glm::distance(pinPosition, balloon.obj->transform.position) < 0.6f) {
-						balloon.meshname += "-Pop";
-						const Mesh& mesh = meshes.get(balloon.meshname);
-						balloon.obj->vao = mesh.vao;
-						balloon.obj->start = mesh.start;
-						balloon.obj->count = mesh.count;
-						balloon.popped = true;
-					}
-				}
-			}
-
-			if (keys[SDL_SCANCODE_Z]) {
-				changeRotation("Base", &baseAngle, -MOVE_SPEED * elapsed, glm::radians(-10000.0f), glm::radians(10000.0f),
-											 BASE_AXIS);
-			}
-			if (keys[SDL_SCANCODE_X]) {
-				changeRotation("Base", &baseAngle, MOVE_SPEED * elapsed, glm::radians(-10000.0f), glm::radians(10000.0f),
-											 BASE_AXIS);
-			}
-
-			if (keys[SDL_SCANCODE_A]) {
-				changeRotation("Link1", &link1angle, -MOVE_SPEED * elapsed, glm::radians(-30.0f), glm::radians(30.0f),
-											 LINK_AXIS);
-			}
-			if (keys[SDL_SCANCODE_S]) {
-				changeRotation("Link1", &link1angle, MOVE_SPEED * elapsed, glm::radians(-30.0f), glm::radians(30.0f),
-											 LINK_AXIS);
-			}
-
-			if (keys[SDL_SCANCODE_SEMICOLON]) {
-				changeRotation("Link2", &link2angle, -MOVE_SPEED * elapsed, glm::radians(-130.0f), glm::radians(130.0f),
-											 LINK_AXIS);
-			}
-			if (keys[SDL_SCANCODE_APOSTROPHE]) {
-				changeRotation("Link2", &link2angle, MOVE_SPEED * elapsed, glm::radians(-130.0f), glm::radians(130.0f),
-											 LINK_AXIS);
-			}
-
-			if (keys[SDL_SCANCODE_PERIOD]) {
-				changeRotation("Link3", &link3angle, -MOVE_SPEED * elapsed, glm::radians(-130.0f), glm::radians(130.0f),
-											 LINK_AXIS);
-			}
-			if (keys[SDL_SCANCODE_SLASH]) {
-				changeRotation("Link3", &link3angle, MOVE_SPEED * elapsed, glm::radians(-130.0f), glm::radians(130.0f),
-											 LINK_AXIS);
+			if (keys[SDL_SCANCODE_W]) {
 			}
 
 			// camera:

@@ -13,37 +13,25 @@ import bpy
 import struct
 
 PATHS = {
-	'in': 'robot.blend',
-	'meshOut': '../dist/robotMeshes.blob',
-	'sceneOut': '../dist/robotScene.blob',
+	'in': 'pool.blend',
+	'meshOut': '../dist/meshes.blob',
+	'sceneOut': '../dist/scene.blob',
 }
 
 bpy.ops.wm.open_mainfile(filepath=PATHS['in'])
 
 #names of objects whose meshes to write (not actually the names of the meshes):
 to_write = [
-	'Base',
-	'Stand',
-	'Link1',
-	'Link2',
-	'Link3',
-	'Crate',
-	'Crate.001',
-	'Crate.002',
-	'Crate.003',
-	'Crate.004',
-	'Crate.005',
-	'Cube.001', # floor
+	'Table',
+	'Player.000',
+	'Player.001'
 ]
 
-mesh_only = [
-	'Balloon1',
-	'Balloon1-Pop',
-	'Balloon2',
-	'Balloon2-Pop',
-	'Balloon3',
-	'Balloon3-Pop',
-]
+for i in range(1, 16):
+	to_write.append('Ball-'+str(i))
+
+for i in range(0, 6):
+	to_write.append('Cylinder.00'+str(i))
 
 #data contains vertex and normal data from the meshes:
 data = b''
@@ -55,7 +43,7 @@ strings = b''
 index = b''
 
 vertex_count = 0
-for name in to_write + mesh_only:
+for name in to_write:
 	print("Writing '" + name + "'...")
 	#bpy.ops.object.mode_set(mode='OBJECT') #get out of edit mode (just in case)
 	assert(name in bpy.data.objects)
