@@ -195,34 +195,63 @@ int main(int argc, char** argv) {
 		float rad;
 		glm::vec2 vel = glm::vec2(0.0f);
 		float speed = 0.0f;
+		float maxSpeed = 0.0f;
 		float angle = 0.0f;
 		bool collided = false;
 
-		Collidable(Scene::Object* obj, float rad) : obj(obj), rad(rad) {}
+		Collidable(Scene::Object* obj, float rad, float maxSpeed = 0.0f) : obj(obj), rad(rad), maxSpeed(maxSpeed) {
+			angle = glm::roll(obj->transform.rotation);
+		}
 
 		bool contains(const glm::vec3& point) { return glm::distance(obj->transform.position, point) <= rad; }
 		bool contains(const Collidable& other) {
 			return glm::distance(obj->transform.position, other.obj->transform.position) <= rad + other.rad;
 		}
-		void set(float velocity, float newAngle) {
+		void setVelocity(float velocity) {
 			velocity = glm::clamp(velocity, -3.0f, 3.0f);
-
-			angle = glm::radians(newAngle);
 
 			vel.x = std::sin(angle) * velocity;
 			vel.y = std::cos(angle) * velocity;
 		}
-		void set(float dv) {
-			float velocity = glm::clamp(glm::length(vel) + dv, -3.0f, 3.0f);
+		void setAngle(float newAngle) {
+			angle = glm::radians(newAngle);
 
-			vel.x = std::sin(angle) * velocity;
-			vel.y = std::cos(angle) * velocity;
+			vel.x = std::sin(angle) * glm::length(vel);
+			vel.y = std::cos(angle) * glm::length(vel);
+
+			obj->transform.rotation = glm::angleAxis(angle, glm::vec3(0.0f, 0.0f, 1.0f));
+		}
+		void add(float dv, float da = 0.0f) {
+			float velocity = glm::clamp(glm::length(vel) + std::fabs(dv), -0.5f, 0.5f);
+
+			angle += glm::radians(da);
+			obj->transform.rotation = glm::angleAxis(angle, glm::vec3(0.0f, 0.0f, 1.0f));
+
+			if (dv < 0.0f) {
+				vel.x = std::cos(angle + 3.14159f) * velocity;
+				vel.y = std::sin(angle + 3.14159f) * velocity;
+
+				// TOOD: this doesn't apply during damping!
+			} else {
+				vel.x = std::cos(angle) * velocity;
+				vel.y = std::sin(angle) * velocity;
+			}
 		}
 		void move(float dt) {
 			obj->transform.position += glm::vec3(vel * dt, 0.0f);
-			// TODO: cool damping vel *= 0.99f;
 
 			collided = false;
+		}
+		void bounceOffWall() {
+			glm::vec3 world = obj->transform.make_local_to_world() * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+			if ((world.x > 2.5f - rad && vel.x > 0.0f) || (world.x < -2.5f + rad && vel.x < 0.0f)) {
+				vel.x = -vel.x;
+			}
+
+			if ((world.y > 2.0f - rad && vel.y > 0.0f) || (world.y < -2.0f + rad && vel.y < 0.0f)) {
+				vel.y = -vel.y;
+			}
 		}
 	};
 	std::vector<Collidable> goals;
@@ -231,7 +260,9 @@ int main(int argc, char** argv) {
 
 	const float GOAL_RAD = 1.0f;
 	const float BALL_RAD = 0.1525f;
+	const float BALL_MAX_SPEED = 3.0f;
 	const float PLAYER_RAD = 0.16f;
+	const float PLAYER_MAX_SPEED = 3.0f;
 	{	// read objects to add from "scene.blob":
 		std::ifstream file("scene.blob", std::ios::binary);
 
@@ -263,9 +294,9 @@ int main(int argc, char** argv) {
 					goals.emplace_back(obj, GOAL_RAD);
 				} else if (name.at(4) == '-') {
 					// TODO: ball number
-					balls.emplace_back(obj, BALL_RAD);
+					balls.emplace_back(obj, BALL_RAD, BALL_MAX_SPEED);
 				} else if (name == "Player.001") {
-					players.emplace_back(obj, PLAYER_RAD);
+					players.emplace_back(obj, PLAYER_RAD, PLAYER_MAX_SPEED);
 				}
 			}
 		}
@@ -279,20 +310,22 @@ int main(int argc, char** argv) {
 
 	struct {
 		float radius = 2.0f;
-		float elevation = 0.0f;
+		float elevation = 1.0f;
 		float azimuth = 0.0f;
 		glm::vec3 target = glm::vec3(0.0f, 0.0f, 0.0f);
 	} camera;
 
-	playerOne.set(0.0f, 270.0f);
+	// playerOne.setAngle(270.0f);
 
 	balls.at(0).obj->transform.position.x = -1.0f;
 	balls.at(0).obj->transform.position.y = -0.5f;
-	balls.at(0).set(3.0f, 45.0f);
+	balls.at(0).setVelocity(3.0f);
+	balls.at(0).setAngle(45.0f);
 
 	balls.at(1).obj->transform.position.x = -1.0f;
 	balls.at(1).obj->transform.position.y = 0.5f;
-	balls.at(1).set(3.0f, 135.0f);
+	balls.at(1).setVelocity(3.0f);
+	balls.at(1).setAngle(135.0f);
 
 	int count = 0;
 	const uint8_t* keys = SDL_GetKeyboardState(&count);
@@ -337,9 +370,13 @@ int main(int argc, char** argv) {
 
 		{	// update game state:
 			bool frontLeft = keys[SDL_SCANCODE_A];
+			// bool prevFrontLeft = prev[SDL_SCANCODE_A];
 			bool frontRight = keys[SDL_SCANCODE_S];
+			// bool prevFrontRight = prev[SDL_SCANCODE_S];
 			bool backLeft = keys[SDL_SCANCODE_Z];
+			// bool prevBackLeft = prev[SDL_SCANCODE_Z];
 			bool backRight = keys[SDL_SCANCODE_X];
+			// bool prevBackRight = prev[SDL_SCANCODE_X];
 
 			// a+x / s+z rotates in place
 			// a / z / s / x pivot
@@ -347,19 +384,37 @@ int main(int argc, char** argv) {
 
 			// static float rotationRate = 5.0f;
 
-			if (frontLeft && frontRight) {
-				playerOne.set(0.1f);
-			} else if (backLeft && backRight) {
-				// playerOne.set();
-			} else if (frontLeft) {
-				// speed += 0.1f;
-				// angle -= rotationRate;
-				// players.at(0)->transform.rotation = glm::angleAxis(glm::radians(angle), glm::vec3(0.0f, 0.0f, 1.0f));
+			static const float ACCEL = 2.0f;
+			static const float ANGLE_ACCEL = 90.0f;
+
+			float dVel = 0.0f;
+			float dAngle = 0.0f;
+			if (frontLeft) {
+				dVel += ACCEL * elapsed;
+				dAngle += -ANGLE_ACCEL * elapsed;
+			}
+			if (frontRight) {
+				dVel += ACCEL * elapsed;
+				dAngle += ANGLE_ACCEL * elapsed;
 			}
 
+			if (backLeft) {
+				dVel += -ACCEL * elapsed;
+				dAngle += ANGLE_ACCEL * elapsed;
+			}
+			if (backRight) {
+				dVel += -ACCEL * elapsed;
+				dAngle += -ANGLE_ACCEL * elapsed;
+			}
+			playerOne.add(dVel, dAngle);
+
+			playerOne.bounceOffWall();
 			playerOne.move(elapsed);
 
+			playerOne.vel *= 0.9f;
+
 			for (auto ball = balls.begin(); ball != balls.end();) {
+				ball->bounceOffWall();
 				ball->move(elapsed);
 
 				if (ball->contains(playerOne)) { /*
@@ -381,30 +436,21 @@ int main(int argc, char** argv) {
 						continue;
 					}
 					if (!ball->collided && ball->contains(otherBall) && !otherBall.collided) {
-						std::cout << "ball on ball collision" << std::endl;
+						// std::cout << "ball on ball collision" << std::endl;
 						glm::vec3 v1 = glm::vec3(ball->vel, 0.0f);
 						glm::vec3 v2 = glm::vec3(otherBall.vel, 0.0f);
 						glm::vec3 x1 = ball->obj->transform.position;
 						glm::vec3 x2 = otherBall.obj->transform.position;
-						std::cout << "v1: " << v1.x << " " << v1.y << " " << std::endl;
+						/*std::cout << "v1: " << v1.x << " " << v1.y << " " << std::endl;
 						std::cout << "v2: " << v2.x << " " << v2.y << std::endl;
 						std::cout << "x1: " << x1.x << " " << x1.y << std::endl;
-						std::cout << "x2: " << x2.x << " " << x2.y << std::endl;
+						std::cout << "x2: " << x2.x << " " << x2.y << std::endl;*/
 						ball->vel = v1 - glm::dot(v1 - v2, x1 - x2) / (glm::length(x1 - x2) * glm::length(x1 - x2)) * (x1 - x2);
 						otherBall.vel = v2 - glm::dot(v2 - v1, x2 - x1) / (glm::length(x2 - x1) * glm::length(x2 - x1)) * (x2 - x1);
 						otherBall.collided = true;
-						std::cout << "v1': " << ball->vel.x << " " << ball->vel.y << std::endl;
-						std::cout << "v2': " << otherBall.vel.x << " " << otherBall.vel.y << std::endl << std::endl;
+						// std::cout << "v1': " << ball->vel.x << " " << ball->vel.y << std::endl;
+						// std::cout << "v2': " << otherBall.vel.x << " " << otherBall.vel.y << std::endl << std::endl;
 					}
-				}
-
-				glm::vec2 world = ball->obj->transform.make_local_to_world() * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-				if (world.x > 2.5f || world.x < -2.5f) {
-					ball->vel.x = -ball->vel.x;
-				}
-
-				if (world.y > 2.0f - BALL_RAD || world.y < -2.0f + BALL_RAD) {
-					ball->vel.y = -ball->vel.y;
 				}
 
 				bool collides = false;
@@ -421,6 +467,9 @@ int main(int argc, char** argv) {
 				ball++;
 				//}
 			}
+
+			// camera.target = playerOne.obj->transform.make_local_to_world() * glm::vec4(0.0f, 0.0f, 1.0f, 1.0f);
+			// camera.azimuth = playerOne.angle + 3.14159f / 2.0f;
 
 			// camera:
 			scene.camera.transform.position =
