@@ -190,8 +190,48 @@ int main(int argc, char** argv) {
 		return object;
 	};
 
-	std::map<std::string, Scene::Object*> objs;
-	std::vector<std::pair<std::string, std::string>> parents;
+	struct Collidable {
+		Scene::Object* obj;
+		float rad;
+		glm::vec2 vel = glm::vec2(0.0f);
+		float speed = 0.0f;
+		float angle = 0.0f;
+		bool collided = false;
+
+		Collidable(Scene::Object* obj, float rad) : obj(obj), rad(rad) {}
+
+		bool contains(const glm::vec3& point) { return glm::distance(obj->transform.position, point) <= rad; }
+		bool contains(const Collidable& other) {
+			return glm::distance(obj->transform.position, other.obj->transform.position) <= rad + other.rad;
+		}
+		void set(float velocity, float newAngle) {
+			velocity = glm::clamp(velocity, -3.0f, 3.0f);
+
+			angle = glm::radians(newAngle);
+
+			vel.x = std::sin(angle) * velocity;
+			vel.y = std::cos(angle) * velocity;
+		}
+		void set(float dv) {
+			float velocity = glm::clamp(glm::length(vel) + dv, -3.0f, 3.0f);
+
+			vel.x = std::sin(angle) * velocity;
+			vel.y = std::cos(angle) * velocity;
+		}
+		void move(float dt) {
+			obj->transform.position += glm::vec3(vel * dt, 0.0f);
+			// TODO: cool damping vel *= 0.99f;
+
+			collided = false;
+		}
+	};
+	std::vector<Collidable> goals;
+	std::vector<Collidable> players;
+	std::vector<Collidable> balls;
+
+	const float GOAL_RAD = 1.0f;
+	const float BALL_RAD = 0.1525f;
+	const float PLAYER_RAD = 0.16f;
 	{	// read objects to add from "scene.blob":
 		std::ifstream file("scene.blob", std::ios::binary);
 
@@ -217,29 +257,47 @@ int main(int argc, char** argv) {
 					throw std::runtime_error("index entry has out-of-range name begin/end");
 				}
 				std::string name(&strings[0] + entry.name_begin, &strings[0] + entry.name_end);
-				objs[name] = &add_object(name, entry.position, entry.rotation, entry.scale);
-				if (entry.parent_name_begin != entry.parent_name_end) {
-					parents.emplace_back(name,
-															 std::string(&strings[0] + entry.parent_name_begin, &strings[0] + entry.parent_name_end));
+				Scene::Object* obj = &add_object(name, entry.position, entry.rotation, entry.scale);
+				// this is a hack instead of correcting/adding to blender output script
+				if (name == "Cylinder.005") {
+					goals.emplace_back(obj, GOAL_RAD);
+				} else if (name.at(4) == '-') {
+					// TODO: ball number
+					balls.emplace_back(obj, BALL_RAD);
+				} else if (name == "Player.001") {
+					players.emplace_back(obj, PLAYER_RAD);
 				}
-			}
-
-			for (const auto& parent : parents) {
-				objs[parent.first]->transform.set_parent(&objs[parent.second]->transform);
 			}
 		}
 	}
 
+	Collidable playerOne = players.at(0);
+	// playerOne
+	// Collidable playerTwo = players.at(1);
+
 	glm::vec2 mouse = glm::vec2(0.0f, 0.0f);	// mouse position in [-1,1]x[-1,1] coordinates
 
 	struct {
-		float radius = 10.0f;
+		float radius = 2.0f;
 		float elevation = 0.0f;
 		float azimuth = 0.0f;
 		glm::vec3 target = glm::vec3(0.0f, 0.0f, 0.0f);
 	} camera;
 
-	const uint8_t* keys = SDL_GetKeyboardState(nullptr);
+	playerOne.set(0.0f, 270.0f);
+
+	balls.at(0).obj->transform.position.x = -1.0f;
+	balls.at(0).obj->transform.position.y = -0.5f;
+	balls.at(0).set(3.0f, 45.0f);
+
+	balls.at(1).obj->transform.position.x = -1.0f;
+	balls.at(1).obj->transform.position.y = 0.5f;
+	balls.at(1).set(3.0f, 135.0f);
+
+	int count = 0;
+	const uint8_t* keys = SDL_GetKeyboardState(&count);
+	uint8_t prev[count];
+	std::memcpy(prev, keys, sizeof prev);
 
 	//------------ game loop ------------
 
@@ -276,8 +334,92 @@ int main(int argc, char** argv) {
 
 		static float total = 0;
 		total += elapsed;
+
 		{	// update game state:
-			if (keys[SDL_SCANCODE_W]) {
+			bool frontLeft = keys[SDL_SCANCODE_A];
+			bool frontRight = keys[SDL_SCANCODE_S];
+			bool backLeft = keys[SDL_SCANCODE_Z];
+			bool backRight = keys[SDL_SCANCODE_X];
+
+			// a+x / s+z rotates in place
+			// a / z / s / x pivot
+			// a+s / z+x move normally
+
+			// static float rotationRate = 5.0f;
+
+			if (frontLeft && frontRight) {
+				playerOne.set(0.1f);
+			} else if (backLeft && backRight) {
+				// playerOne.set();
+			} else if (frontLeft) {
+				// speed += 0.1f;
+				// angle -= rotationRate;
+				// players.at(0)->transform.rotation = glm::angleAxis(glm::radians(angle), glm::vec3(0.0f, 0.0f, 1.0f));
+			}
+
+			playerOne.move(elapsed);
+
+			for (auto ball = balls.begin(); ball != balls.end();) {
+				ball->move(elapsed);
+
+				if (ball->contains(playerOne)) { /*
+					 std::cout << "player collision" << std::endl;
+					 glm::vec3 v1 = glm::vec3(ball->vel, 0.0f);
+					 glm::vec3 v2 = glm::vec3(playerOne.vel, 0.0f);
+					 glm::vec3 x1 = ball->obj->transform.position;
+					 glm::vec3 x2 = playerOne.obj->transform.position;
+					 std::cout << "b4 v: " << ball->vel.x << " " << ball->vel.y << std::endl;
+					 ball->vel = v1 - glm::dot(v1 - v2, x1 - x2) / (glm::length(x1 - x2) * glm::length(x1 - x2)) * (x1 - x2);
+					 // otherBall.vel = v2 - glm::dot(v2 - v1, x2 - x1) / (glm::length(x2 - x1) * glm::length(x2 - x1)) * (x2 -
+					 // x1);
+					 ball->collided = true;
+					 std::cout << "a4 v: " << ball->vel.x << " " << ball->vel.y << std::endl;*/
+				}
+
+				for (Collidable& otherBall : balls) {
+					if (&(*ball) == &otherBall) {
+						continue;
+					}
+					if (!ball->collided && ball->contains(otherBall) && !otherBall.collided) {
+						std::cout << "ball on ball collision" << std::endl;
+						glm::vec3 v1 = glm::vec3(ball->vel, 0.0f);
+						glm::vec3 v2 = glm::vec3(otherBall.vel, 0.0f);
+						glm::vec3 x1 = ball->obj->transform.position;
+						glm::vec3 x2 = otherBall.obj->transform.position;
+						std::cout << "v1: " << v1.x << " " << v1.y << " " << std::endl;
+						std::cout << "v2: " << v2.x << " " << v2.y << std::endl;
+						std::cout << "x1: " << x1.x << " " << x1.y << std::endl;
+						std::cout << "x2: " << x2.x << " " << x2.y << std::endl;
+						ball->vel = v1 - glm::dot(v1 - v2, x1 - x2) / (glm::length(x1 - x2) * glm::length(x1 - x2)) * (x1 - x2);
+						otherBall.vel = v2 - glm::dot(v2 - v1, x2 - x1) / (glm::length(x2 - x1) * glm::length(x2 - x1)) * (x2 - x1);
+						otherBall.collided = true;
+						std::cout << "v1': " << ball->vel.x << " " << ball->vel.y << std::endl;
+						std::cout << "v2': " << otherBall.vel.x << " " << otherBall.vel.y << std::endl << std::endl;
+					}
+				}
+
+				glm::vec2 world = ball->obj->transform.make_local_to_world() * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+				if (world.x > 2.5f || world.x < -2.5f) {
+					ball->vel.x = -ball->vel.x;
+				}
+
+				if (world.y > 2.0f - BALL_RAD || world.y < -2.0f + BALL_RAD) {
+					ball->vel.y = -ball->vel.y;
+				}
+
+				bool collides = false;
+				for (Collidable& goal : goals) {
+					if (ball->contains(goal)) {
+						// std::cout << "goal" << std::endl;
+						collides = true;
+						break;
+					}
+				}
+				// if (collides) {
+				// ball = balls.erase(ball);
+				//} else {
+				ball++;
+				//}
 			}
 
 			// camera:
@@ -294,6 +436,8 @@ int main(int argc, char** argv) {
 			scene.camera.transform.rotation = glm::quat_cast(glm::mat3(right, up, out));
 			scene.camera.transform.scale = glm::vec3(1.0f, 1.0f, 1.0f);
 		}
+
+		std::memcpy(prev, keys, sizeof prev);
 
 		// draw output:
 		glClearColor(0.5, 0.5, 0.5, 0.0);
