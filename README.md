@@ -1,20 +1,28 @@
-# TODO
+# 8 Ball Bulldozer
 
-TODO is Jared Moore's implementation of [*TODO*](TODO) for game3 in 15-466-f17.
+8 Ball Bulldozer is Jared Moore's implementation of [Pool Dozer](http://graphics.cs.cmu.edu/courses/15-466-f17/game3-designs/jmccann/) for game3 in 15-466-f17.
 
-![alt text](https://github.com/moorejs/15-466-f17-base2/blob/master/screenshots/main.png?raw=true)
+![screenshot](https://github.com/moorejs/15-466-f17-game3/blob/master/screenshots/main.png?raw=true)
 
 ## Asset Pipeline
 
-TODO
+The asset pipeleine is the same as in [game2](https://github.com/moorejs/15-466-f17-base2/blob/master/README.md).
 
 ## Architecture
 
-TODO
+The architecture was similar to the last project's. However, I did not use a map this time to store the scene objects. Instead, I was able to use a few vectors for each object type (balls, goals, and players).
+
+The two players were handled each individually (which led to a fair amount of code duplication..). Every ball checks for collisions with the players, all other balls, and the goals each frame. This was not the most efficient way to handle this, but it works for this amount of objects. The objects were all assumed to be spheres so overlaps were determined by radius.
+
+The camera position was the world coordinate between the two players and the camera's radius was the length of the line between them (with a minimum). It provided a bird's eye view. This all allowed the players to always be in view.
 
 ## Reflection
 
-TODO
+Loading the scene was not very hard as it was a continuation of the last game's scene loading. The most difficult part was building the physics system. I had to learn about two dimensional ellastic collisions between two moving objects. It's hard to tell if the resulting velocities I got out of my attempts at mimicing the equations actually worked correctly every time. Also, I only wanted to handle collision for one frame, even though the balls may be together for multiple frames (cannot always resolve in one frame), so I tried to check whether the objects were moving toward each other first. Additionally, faking the rotation of the balls didn't seem to come out right, so that was a challenge.
+
+I would have liked to polished pretty much all the major components of the games. The controls did not seem quite right or fun enough, and sometimes the physics was not fun enough either. The player should be able to really send the balls but for not they kind of just bounce off. I am not sure how I would polish the controls more (it is hard) but they definitely could be better.
+
+Another interesting thing I could have done was dividing the map into 6 areas, one for each goal, and only checking collisions for balls in each area. This would take a bit of time so I could not implement it for this game.
 
 # About Base2
 
